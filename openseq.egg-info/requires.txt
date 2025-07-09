@@ -1,0 +1,10 @@
+jax>=0.4.20
+jaxlib>=0.4.20
+numpy>=1.22
+optax>=0.1.7
+
+[dev]
+pytest>=7.0
+pytest-cov>=4.0
+
+[examples]

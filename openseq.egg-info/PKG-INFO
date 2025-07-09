@@ -1,0 +1,160 @@
+Metadata-Version: 2.4
+Name: openseq
+Version: 0.1.0
+Summary: A Python library for fitting multiple sequence alignment models
+Home-page: https://github.com/your-repo/openseq
+Author: OpenSeq Contributors
+Author-email: openseq@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Typing :: Typed
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: jax>=0.4.20
+Requires-Dist: jaxlib>=0.4.20
+Requires-Dist: numpy>=1.22
+Requires-Dist: optax>=0.1.7
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Provides-Extra: examples
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# OpenSeq
+
+OpenSeq is a Python library for fitting multiple sequence alignment (MSA) models, performing contact prediction, and generating sequences. It is built with JAX for high performance.
+
+## Features
+
+- Implements various MSA models:
+    - **KMeans:** For clustering sequences (or their embeddings).
+    - **MRF (Markov Random Field):** For modeling dependencies in aligned MSAs. Supports pseudo-likelihood and autoregressive fitting.
+    - **MRF_BM (Boltzmann Machine MRF):** MRF training using Boltzmann Machine learning principles (e.g., contrastive divergence).
+    - **SMURF (Sequence Model for Unaligned Residues Framework):** An MRF-based model that can work with unaligned sequences by incorporating sequence alignment (e.g., Smith-Waterman) within its architecture.
+- Supports different fitting strategies:
+    - Pseudo-likelihood (for MRF, SMURF)
+    - Autoregressive fitting (special case of pseudo-likelihood for MRF)
+    - Boltzmann Machine learning (for MRF_BM)
+- Provides utilities for data processing, alignment, and statistics.
+
+## Installation
+
+To install the library from source after cloning the repository:
+```bash
+pip install .
+```
+
+If OpenSeq becomes available on PyPI:
+```bash
+pip install openseq
+```
+
+## Basic Usage
+
+Below are conceptual examples. For runnable scripts, please see the `openseq/examples/` directory.
+
+### KMeans Clustering
+```python
+from openseq.models import KMeans
+import jax.numpy as jnp
+import numpy as np
+
+# Generate some data
+X = np.random.rand(100, 10) # 100 samples, 10 features
+X_jnp = jnp.asarray(X)
+
+# Initialize and fit
+kmeans = KMeans(n_clusters=5, seed=42)
+kmeans.fit(X_jnp)
+
+# Predict cluster labels
+labels = kmeans.predict(X_jnp)
+print(f"Cluster centers shape: {kmeans.means_.shape}")
+print(f"First 10 labels: {labels[:10]}")
+```
+
+### MRF for Aligned Sequences
+```python
+from openseq.models import MRF
+from openseq.utils.data_processing import mk_msa # (Assuming you have sequences)
+from openseq.utils.random import get_random_key
+import jax.numpy as jnp
+
+# Dummy data (replace with actual MSA loading and preprocessing)
+# key = get_random_key(0)
+# num_seqs, L, A = 20, 10, 21 # 20 sequences, length 10, alphabet size 21
+# msa_one_hot = jax.random.randint(key, (num_seqs, L), 0, A)
+# msa_one_hot = jax.nn.one_hot(msa_one_hot, A)
+# seq_weights = jnp.ones(num_seqs) / num_seqs
+
+# L, A would be derived from your data
+# mrf = MRF(L=L, A=A, k=1, lam=0.01)
+# mrf.fit(msa_one_hot, X_weight=seq_weights, learning_rate=0.1, steps=100)
+
+# contacts = mrf.get_w() # Get coupling matrix
+# generated_seqs = mrf.sample(num_samples=10)
+
+# print("See openseq/examples/mrf_example.py for a more complete, runnable example (once MRF is implemented).")
+```
+For detailed, runnable examples, please check the scripts in the `openseq/examples/` directory:
+- `kmeans_example.py`
+- `mrf_example.py` (placeholder, to be fully implemented)
+- `mrf_bm_example.py` (placeholder, to be fully implemented)
+- `smurf_example.py` (placeholder, to be fully implemented)
+
+## Documentation
+
+Detailed docstrings are provided for all public modules, classes, and functions. As the library matures, more comprehensive documentation (e.g., Sphinx-generated) may be added.
+
+## Contributing
+
+Contributions are welcome! Please refer to the (to-be-created) contributing guidelines.
+
+## License
+
+This project is licensed under the MIT License. (A `LICENSE` file should be added).
+```
+
+#### Adding a `LICENSE` file (MIT License example):
+
+```
+Copyright (c) [Year] [Your Name/Organization]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+(This would be placed in a file named `LICENSE` in the project root.)
