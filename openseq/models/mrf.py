@@ -26,7 +26,9 @@ class MRF(Model):
 
         self.L = L
         self.A = A
-        self.k = k # Number of mixture components
+        if k != 1:
+            raise NotImplementedError("MRF class currently simplified to k=1 (no mixtures) for debugging get_w.")
+        self.k = 1
         self.lam = lam
         self.learning_rate = learning_rate
         self.optimizer_type = optimizer_type.lower()
@@ -62,34 +64,12 @@ class MRF(Model):
         # Bias 'b' was initialized using data mean in original mrf.py;
         # here, we'll do simpler init first, data-dependent init can be added in fit or as an option.
 
-        if self.k == 1:
-            params['w'] = jnp.zeros((self.L, self.A, self.L, self.A))
-            # Small random noise could be added: + jax.random.normal(key_w, (self.L, self.A, self.L, self.A)) * 1e-4
-            params['b'] = jnp.zeros((self.L, self.A))
-            # Small random noise: + jax.random.normal(key_b, (self.L, self.A)) * 1e-4
-        else:
-            # For mixtures (k > 1)
-            # mw: mixture-specific couplings (k, L, A, L, A)
-            # mb: mixture-specific biases (k, L, A)
-            # c: mixture weights/logits (k,)
-            # w: shared couplings (L,A,L,A) - if tied/shared modes are implemented
-            # b: shared biases (L,A) - if tied/shared modes are implemented
-            # For now, let's assume a simple mixture where each component has its own w and b.
-            # This is equivalent to params['w'] being (k,L,A,L,A) and params['b'] being (k,L,A)
-            # and then params['c'] for mixture weights.
+        # Enforcing k=1 for this simplified version
+        assert self.k == 1, "_initialize_parameters called with self.k != 1 in simplified version"
 
-            # Simplified initial mixture implementation: each mixture has its own set of params.
-            # This means 'w' and 'b' will have an extra leading dimension 'k'.
-            # The original mrf.py had complex logic for 'inc' (included params) based on 'tied', 'full', 'shared'.
-            # We will start with a basic k-component mixture where each has its own w_k, b_k.
-            # And a global mixture weight param 'c'.
-
-            params['w'] = jnp.zeros((self.k, self.L, self.A, self.L, self.A))
-            params['b'] = jnp.zeros((self.k, self.L, self.A))
-            params['c'] = jnp.zeros((self.k,)) # Logits for mixture components, normalized via softmax later
-
-            # TODO: Implement more complex mixture parameter sharing schemes (tied, full, shared) from original mrf.py
-            # For example, a shared 'w' and mixture-specific 'mb' (mb_k = b_k - b_shared).
+        params['w'] = jnp.zeros((self.L, self.A, self.L, self.A))
+        params['b'] = jnp.zeros((self.L, self.A))
+        # No mixture parameters 'c', 'mw', 'mb' needed for k=1
 
         return params
 
@@ -421,27 +401,27 @@ class MRF(Model):
         if self.params is None:
             raise ValueError("Model not yet fit. Parameters are not available.")
 
-        if self.k != 1:
-            raise NotImplementedError("DEBUG: get_w currently only supports k=1.")
+        # Simplified for k=1 ONLY
+        assert self.k == 1, "get_w simplified version is only for k=1"
 
         if 'w' not in self.params or self.params['w'] is None:
-            raise ValueError("Parameters 'w' not found in model or is None for k=1.")
+            raise ValueError("Parameters 'w' not found in model or is None.")
 
-        current_w = self.params['w'] # Shape (L,A,L,A)
+        current_w = self.params['w']
 
-        if current_w.ndim != 4 or current_w.shape[0] != self.L or current_w.shape[1] != self.A or \
-           current_w.shape[2] != self.L or current_w.shape[3] != self.A:
-            raise ValueError(f"Parameter 'w' has unexpected shape: {current_w.shape}. Expected ({self.L},{self.A},{self.L},{self.A}).")
+        # Basic shape check for k=1 'w'
+        expected_shape = (self.L, self.A, self.L, self.A)
+        if current_w.shape != expected_shape:
+            raise ValueError(f"Parameter 'w' has unexpected shape: {current_w.shape}. Expected {expected_shape}.")
 
         # Symmetrize: W_iajb = W_jbia
         w_symmetrized = 0.5 * (current_w + current_w.transpose((2, 3, 0, 1)))
 
         # Normalization (mean subtraction per position-pair submatrix)
-        mean_per_pos_pair = w_symmetrized.mean(axis=(1,3), keepdims=True) # Mean over A_i (axis 1) and A_j (axis 3)
+        mean_per_pos_pair = w_symmetrized.mean(axis=(1,3), keepdims=True)
         w_normalized = w_symmetrized - mean_per_pos_pair
 
         return w_normalized
-
 
     def predict(self, X=None, **kwargs): # X might not be needed for contact prediction from couplings
         """

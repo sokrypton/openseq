@@ -337,47 +337,56 @@ def normalize_row_col(z, z_mask, norm_mode="fast"):
         z = z * z_mask
         # Equivalent to APC (Average Product Correction) if z is a covariance-like matrix
         # Or a kind of iterative normalization.
-        # This specific formula: z -= (z.sum(1)*z.sum(2))/z.sum() then z /= sqrt((z_sq.sum(1)*z_sq.sum(2))/z_sq.sum())
-        # seems like a custom normalization.
-        sum_1 = jnp.sum(z, axis=1, keepdims=True)
-        sum_2 = jnp.sum(z, axis=2, keepdims=True)
-        sum_total = jnp.sum(z, axis=(1,2), keepdims=True)
+        # This specific formula: z -= (z.sum(axis=1)*z.sum(axis=0))/z.sum() then z /= sqrt((z_sq.sum(axis=1)*z_sq.sum(axis=0))/z_sq.sum())
+        # for a 2D input z.
+        # axis=1 corresponds to summing over columns (shape[1]) for each row.
+        # axis=0 corresponds to summing over rows (shape[0]) for each col.
+        sum_cols = jnp.sum(z, axis=1, keepdims=True) # (L1, 1)
+        sum_rows = jnp.sum(z, axis=0, keepdims=True) # (1, L2)
+        sum_total = jnp.sum(z, axis=(0,1), keepdims=True) # (1,1)
 
-        z = z - (sum_1 * sum_2) / (sum_total + 1e-8)
+        z = z - (sum_cols * sum_rows) / (sum_total + 1e-8) # APC-like step
         z = z * z_mask # Re-apply mask
 
         z_sq = jnp.square(z)
-        sum_sq_1 = jnp.sum(z_sq, axis=1, keepdims=True)
-        sum_sq_2 = jnp.sum(z_sq, axis=2, keepdims=True)
-        sum_sq_total = jnp.sum(z_sq, axis=(1,2), keepdims=True)
+        sum_sq_cols = jnp.sum(z_sq, axis=1, keepdims=True) # (L1,1)
+        sum_sq_rows = jnp.sum(z_sq, axis=0, keepdims=True) # (1,L2)
+        sum_sq_total = jnp.sum(z_sq, axis=(0,1), keepdims=True) # (1,1)
 
-        denominator = jnp.sqrt((sum_sq_1 * sum_sq_2) / (sum_sq_total + 1e-8) + 1e-8)
+        # Denominator for normalization, APC-like for variance
+        denominator = jnp.sqrt( (sum_sq_cols * sum_sq_rows) / (sum_sq_total + 1e-8) + 1e-8)
         z = z / denominator
 
-    elif norm_mode == "slow": # Iterative normalization
-        z_num_1 = jnp.sum(z_mask, axis=1, keepdims=True)
-        z_num_2 = jnp.sum(z_mask, axis=2, keepdims=True)
+    elif norm_mode == "slow": # Iterative normalization for 2D input z
+        # z_num_1 is sum of mask over columns (i.e., number of valid elements per row)
+        z_num_rows = jnp.sum(z_mask, axis=1, keepdims=True) # (L1, 1)
+        # z_num_2 is sum of mask over rows (i.e., number of valid elements per col)
+        z_num_cols = jnp.sum(z_mask, axis=0, keepdims=True) # (1, L2)
 
         z = z * z_mask
         for _ in range(2): # Iterative refinement
-            # Normalize rows
-            z = z - jnp.sum(z, axis=1, keepdims=True) / (z_num_1 + 1e-8)
+            # Normalize rows (sum over axis 1)
+            z = z - jnp.sum(z, axis=1, keepdims=True) / (z_num_rows + 1e-8)
             z = z * z_mask
-            z = z / (jnp.sqrt(jnp.sum(jnp.square(z), axis=1, keepdims=True) / (z_num_1 + 1e-8)) + 1e-8)
-            z = z * z_mask # Ensure masked areas remain zero and don't cause NaNs
-
-            # Normalize columns
-            z = z - jnp.sum(z, axis=2, keepdims=True) / (z_num_2 + 1e-8)
-            z = z * z_mask
-            z = z / (jnp.sqrt(jnp.sum(jnp.square(z), axis=2, keepdims=True) / (z_num_2 + 1e-8)) + 1e-8)
+            z = z / (jnp.sqrt(jnp.sum(jnp.square(z), axis=1, keepdims=True) / (z_num_rows + 1e-8)) + 1e-8)
             z = z * z_mask
 
-    elif norm_mode == "simple": # Global mean removal and variance normalization
+            # Normalize columns (sum over axis 0)
+            z = z - jnp.sum(z, axis=0, keepdims=True) / (z_num_cols + 1e-8)
+            z = z * z_mask
+            z = z / (jnp.sqrt(jnp.sum(jnp.square(z), axis=0, keepdims=True) / (z_num_cols + 1e-8)) + 1e-8)
+            z = z * z_mask
+
+    elif norm_mode == "simple": # Global mean removal and variance normalization for 2D input z
         z = z * z_mask
-        z = z - jnp.sum(z, axis=(1,2), keepdims=True) / (jnp.sum(z_mask, axis=(1,2), keepdims=True) + 1e-8)
+        sum_z_total_scalar = jnp.sum(z) # scalar
+        sum_mask_total_scalar = jnp.sum(z_mask) # scalar
+
+        z = z - sum_z_total_scalar / (sum_mask_total_scalar + 1e-8)
         z = z * z_mask
-        z_sq = jnp.square(z)
-        z = z / (jnp.sqrt(jnp.sum(z_sq, axis=(1,2), keepdims=True) / (jnp.sum(z_mask, axis=(1,2), keepdims=True) + 1e-8)) + 1e-8)
+
+        sum_z_sq_total_scalar = jnp.sum(jnp.square(z))
+        z = z / (jnp.sqrt(sum_z_sq_total_scalar / (sum_mask_total_scalar + 1e-8)) + 1e-8)
         z = z * z_mask
 
     return z * z_mask # Final mask application

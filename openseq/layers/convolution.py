@@ -85,13 +85,15 @@ def conv1d_apply(params: dict, x: jnp.ndarray, stride: int = 1, padding: str = "
     # `window_strides` is a sequence, so `(stride,)` for 1D.
     # `padding` is "SAME" or "VALID".
 
-    y_transposed = jax.lax.conv(
+    # Use conv_general_dilated to specify dimension numbers
+    y_transposed = jax.lax.conv_general_dilated(
         lhs=x_transposed,      # (N, C_in, L)
         rhs=weights,           # (C_out, C_in, W_kernel)
         window_strides=(stride,),
         padding=padding,
-        dimension_numbers=('NCW', 'OIW', 'NCW') # NCHW-like: (batch, channel, width)
-                                                # OIH_W-like: (out_channel, in_channel, width_kernel)
+        dimension_numbers=('NCW', 'OIW', 'NCW'), # (batch, feature, spatial), (out, in, spatial), (batch, feature, spatial)
+        feature_group_count=1, # Standard convolution
+        rhs_dilation=(1,) # No dilation for kernel / rhs
     )
 
     y = y_transposed.transpose([0, 2, 1]) # (batch_size, length_out, out_dims)
@@ -108,4 +110,3 @@ def conv1d_apply(params: dict, x: jnp.ndarray, stride: int = 1, padding: str = "
 # need to be ported here or if they are too specific to SMURF/Gremlin logic
 # and better handled within those model files or by external libraries.
 # For now, only Conv1D as it was used by SMURF (network_functions.MRF) and laxy.
-```
