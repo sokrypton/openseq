@@ -26,7 +26,7 @@ class MRF(Model):
 
         self.L = L
         self.A = A
-        self.k = k # k is now configurable
+        self.k = k
         self.lam = lam
         self.learning_rate = learning_rate
         self.optimizer_type = optimizer_type.lower()
