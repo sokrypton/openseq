@@ -48,7 +48,10 @@ class MRF(Model):
             print(f"Warning: Unknown optimizer type '{optimizer_type}'. Defaulting to Adam.")
             self.optimizer = optax.adam(learning_rate=self.learning_rate)
 
-        self.optimizer_state = self.optimizer.init(self.params)
+        # Ensure params passed to optimizer.init is not the instance's self.params directly,
+        # though optax.init shouldn't modify its input. This is for extreme caution.
+        params_for_opt_init = jax.tree_util.tree_map(lambda x: x, self.params)
+        self.optimizer_state = self.optimizer.init(params_for_opt_init)
 
     def _initialize_parameters(self):
         """Helper function to initialize model parameters."""
@@ -405,27 +408,27 @@ class MRF(Model):
         if self.k == 1:
             if 'w' not in self.params:
                 raise ValueError("Parameters 'w' not found in model for k=1.")
-            if self.params['w'] is None:
-                raise ValueError("self.params['w'] is None in get_w for k=1.") # Should be caught by test assertion prior
+            # The test assertion model.params['w'] is not None should catch this if params were loaded.
+            # If model is freshly initialized, params['w'] is jnp.zeros, so not None.
             current_w = self.params['w']
-        else: # k > 1 (mixtures) - This logic needs to be restored/completed from original mrf.py.
-              # For now, to pass k=1 test, this branch won't be hit if __init__ enforces k=1.
-              # If __init__ allows k>1 again, this needs proper implementation.
-            # Placeholder for k>1, this will fail if k>1 is actually used and 'c' is not there
-            # raise NotImplementedError("get_w for k > 1 (mixtures) is not fully implemented/restored yet.")
-            if 'w' not in self.params or self.params['w'] is None or \
-               'c' not in self.params or self.params['c'] is None:
+        else: # k > 1 (mixtures)
+            if 'w' not in self.params or 'c' not in self.params:
                 raise ValueError("Parameters 'w' or 'c' for mixtures not found or are None.")
+            if self.params['w'] is None or self.params['c'] is None:
+                 raise ValueError("Mixture parameters 'w' or 'c' are None.")
+
             mixture_weights = jax.nn.softmax(self.params['c'])
-            current_w = jnp.einsum('k,kijab->ijab', mixture_weights, self.params['w']) # For k,L,A,L,A params['w']
+            # self.params['w'] for k>1 is (k,L,A,L,A)
+            current_w = jnp.einsum('k,kijab->ijab', mixture_weights, self.params['w'])
 
         if current_w is None:
-             raise ValueError("Effective 'w' is None after initial processing; this should not happen.")
+             # This path should ideally not be reached if above checks are comprehensive.
+             raise ValueError("Effective 'w' evaluated to None unexpectedly.")
 
+        # Ensure current_w is the expected (L,A,L,A) shape after potential mixture processing.
         expected_shape = (self.L, self.A, self.L, self.A)
         if current_w.shape != expected_shape:
-            # This might happen if k>1 logic for 'w' is not yet creating the correct (L,A,L,A) current_w
-            raise ValueError(f"Effective 'w' has unexpected shape: {current_w.shape}. Expected {expected_shape}.")
+            raise ValueError(f"Calculated 'current_w' has unexpected shape: {current_w.shape}. Expected {expected_shape}.")
 
         w_symmetrized = 0.5 * (current_w + current_w.transpose((2, 3, 0, 1)))
         mean_per_pos_pair = w_symmetrized.mean(axis=(1,3), keepdims=True)
@@ -661,17 +664,17 @@ class MRF(Model):
         Args:
             params (dict): A dictionary containing model parameters.
         """
-        self.params = params
+        # Ensure a deep copy of params to avoid any potential modification by reference issues,
+        # especially before it's passed to optimizer.init.
+        self.params = jax.tree_util.tree_map(lambda x: x, params)
+
         # Re-initialize optimizer state with the new parameters
         if hasattr(self, 'optimizer') and self.optimizer is not None:
             self.optimizer_state = self.optimizer.init(self.params)
         else:
-            # This case might occur if load_parameters is called before optimizer is set up (e.g. __init__ not fully run)
-            # Or if the optimizer attribute is named differently or not present.
-            # For robustness, one might re-create the optimizer here if necessary,
-            # but assuming it's available from __init__.
-            # print("Warning: Optimizer not available or not initialized. Optimizer state not reset with new params.")
-            self.optimizer_state = None # Or raise an error if optimizer should always exist
+            self.optimizer_state = None
+            # Consider raising an error if optimizer should always exist after __init__
+            print("Warning: Optimizer not available or not initialized in load_parameters. Optimizer state not reset.")
 
 
     def get_w(self):
