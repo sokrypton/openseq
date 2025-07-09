@@ -26,9 +26,7 @@ class MRF(Model):
 
         self.L = L
         self.A = A
-        if k != 1:
-            raise NotImplementedError("MRF class currently simplified to k=1 (no mixtures) for debugging get_w.")
-        self.k = 1
+        self.k = k # k is now configurable
         self.lam = lam
         self.learning_rate = learning_rate
         self.optimizer_type = optimizer_type.lower()
@@ -64,12 +62,14 @@ class MRF(Model):
         # Bias 'b' was initialized using data mean in original mrf.py;
         # here, we'll do simpler init first, data-dependent init can be added in fit or as an option.
 
-        # Enforcing k=1 for this simplified version
-        assert self.k == 1, "_initialize_parameters called with self.k != 1 in simplified version"
-
-        params['w'] = jnp.zeros((self.L, self.A, self.L, self.A))
-        params['b'] = jnp.zeros((self.L, self.A))
-        # No mixture parameters 'c', 'mw', 'mb' needed for k=1
+        if self.k == 1:
+            params['w'] = jnp.zeros((self.L, self.A, self.L, self.A))
+            params['b'] = jnp.zeros((self.L, self.A))
+        else: # k > 1, initialize mixture params as well
+            params['w'] = jnp.zeros((self.k, self.L, self.A, self.L, self.A)) # Or shared w + mw_delta
+            params['b'] = jnp.zeros((self.k, self.L, self.A)) # Or shared b + mb_delta
+            params['c'] = jnp.zeros((self.k,)) # Logits for mixture components
+            # TODO: Full mixture parameter sharing logic from original mrf.py (tied, full, shared)
 
         return params
 
@@ -401,23 +401,33 @@ class MRF(Model):
         if self.params is None:
             raise ValueError("Model not yet fit. Parameters are not available.")
 
-        # Simplified for k=1 ONLY
-        assert self.k == 1, "get_w simplified version is only for k=1"
+        current_w = None
+        if self.k == 1:
+            if 'w' not in self.params:
+                raise ValueError("Parameters 'w' not found in model for k=1.")
+            if self.params['w'] is None:
+                raise ValueError("self.params['w'] is None in get_w for k=1.") # Should be caught by test assertion prior
+            current_w = self.params['w']
+        else: # k > 1 (mixtures) - This logic needs to be restored/completed from original mrf.py.
+              # For now, to pass k=1 test, this branch won't be hit if __init__ enforces k=1.
+              # If __init__ allows k>1 again, this needs proper implementation.
+            # Placeholder for k>1, this will fail if k>1 is actually used and 'c' is not there
+            # raise NotImplementedError("get_w for k > 1 (mixtures) is not fully implemented/restored yet.")
+            if 'w' not in self.params or self.params['w'] is None or \
+               'c' not in self.params or self.params['c'] is None:
+                raise ValueError("Parameters 'w' or 'c' for mixtures not found or are None.")
+            mixture_weights = jax.nn.softmax(self.params['c'])
+            current_w = jnp.einsum('k,kijab->ijab', mixture_weights, self.params['w']) # For k,L,A,L,A params['w']
 
-        if 'w' not in self.params or self.params['w'] is None:
-            raise ValueError("Parameters 'w' not found in model or is None.")
+        if current_w is None:
+             raise ValueError("Effective 'w' is None after initial processing; this should not happen.")
 
-        current_w = self.params['w']
-
-        # Basic shape check for k=1 'w'
         expected_shape = (self.L, self.A, self.L, self.A)
         if current_w.shape != expected_shape:
-            raise ValueError(f"Parameter 'w' has unexpected shape: {current_w.shape}. Expected {expected_shape}.")
+            # This might happen if k>1 logic for 'w' is not yet creating the correct (L,A,L,A) current_w
+            raise ValueError(f"Effective 'w' has unexpected shape: {current_w.shape}. Expected {expected_shape}.")
 
-        # Symmetrize: W_iajb = W_jbia
         w_symmetrized = 0.5 * (current_w + current_w.transpose((2, 3, 0, 1)))
-
-        # Normalization (mean subtraction per position-pair submatrix)
         mean_per_pos_pair = w_symmetrized.mean(axis=(1,3), keepdims=True)
         w_normalized = w_symmetrized - mean_per_pos_pair
 

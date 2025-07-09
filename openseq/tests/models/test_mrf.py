@@ -95,25 +95,23 @@ class TestMRF:
         assert model.params['w'] is not None, "model.params['w'] should be a JAX array, not None"
 
         w_eff = model.get_w()
-        assert w_eff is not None, "EXTREME DEBUG: model.get_w() (which should be returning self.params['w']) should not return None"
-        assert w_eff.shape == (L, A, L, A) # This will pass if get_w returns params['w'] correctly
+        assert model.params['w'] is not None, "model.params['w'] should be a JAX array, not None"
 
-        # The following assertions for symmetry and normalization are temporarily invalid / commented out
-        # as get_w is now returning the raw self.params['w'] for debugging.
-        # Once the NoneType issue is solved, get_w will be restored and these re-enabled.
+        w_eff = model.get_w()
+        assert w_eff is not None, "model.get_w() should not return None" # Restored assertion
+        assert w_eff.shape == (L, A, L, A)
 
-        # # Check symmetry
-        # assert jnp.allclose(w_eff, w_eff.transpose((2,3,0,1)), atol=1e-6), "Effective W should be symmetric"
-        # # Check normalization
-        # mean_of_submatrices = w_eff.mean(axis=(1,3), keepdims=False) # Shape (L,L)
-        # assert jnp.allclose(mean_of_submatrices, 0.0, atol=1e-6), "Mean of each L,L block's A,A submatrix should be ~0"
+        # Check symmetry
+        assert jnp.allclose(w_eff, w_eff.transpose((2,3,0,1)), atol=1e-6), "Effective W should be symmetric"
+        # Check normalization (mean of each (A,A) submatrix should be ~0)
+        mean_of_submatrices = w_eff.mean(axis=(1,3), keepdims=False) # Shape (L,L)
+        assert jnp.allclose(mean_of_submatrices, 0.0, atol=1e-6), "Mean of each L,L block's A,A submatrix should be ~0"
 
-        # model.predict() will also likely fail or give different results now, skip for this debug step.
-        # raw_map, apc_map = model.predict()
-        # assert raw_map.shape == (L, L)
-        # assert apc_map.shape == (L, L)
-        # assert jnp.all(jnp.diag(raw_map) == 0)
-        # assert jnp.all(jnp.diag(apc_map) == 0)
+        raw_map, apc_map = model.predict()
+        assert raw_map.shape == (L, L)
+        assert apc_map.shape == (L, L)
+        assert jnp.all(jnp.diag(raw_map) == 0)
+        assert jnp.all(jnp.diag(apc_map) == 0)
         assert raw_map.shape == (L, L)
         assert apc_map.shape == (L, L)
         assert jnp.all(jnp.diag(raw_map) == 0)
