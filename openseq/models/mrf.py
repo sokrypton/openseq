@@ -50,8 +50,8 @@ class MRF(Model):
 
         # Ensure params passed to optimizer.init is not the instance's self.params directly,
         # though optax.init shouldn't modify its input. This is for extreme caution.
-        params_for_opt_init = jax.tree_util.tree_map(lambda x: x, self.params)
-        self.optimizer_state = self.optimizer.init(params_for_opt_init)
+        # params_for_opt_init = jax.tree_util.tree_map(lambda x: x, self.params) # Removed deepcopy here for now
+        self.optimizer_state = self.optimizer.init(self.params)
 
     def _initialize_parameters(self):
         """Helper function to initialize model parameters."""
